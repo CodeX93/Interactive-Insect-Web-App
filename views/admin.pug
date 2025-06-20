@@ -1,0 +1,53 @@
+doctype html
+head
+	meta(charset='utf-8')
+	title Socket Admin
+	link(rel='stylesheet' href='/static/css/admin.css')
+#main.container
+script(src='/static/js/socket.io.js' charset='utf-8')
+script(src='/static/js/p5.js' charset='utf-8')
+script(src='https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js')
+script(src='https://code.jquery.com/ui/1.12.1/jquery-ui.js')
+script(type='text/javascript').
+	const socket = io()
+	socket.on('connect',function() { // When socket connects, inform that this is admin page
+		socket.emit('admin')
+	})
+	socket.on('newImage', function(d) { // New user has joined customer / client page
+		let html = $("<img class='imgCont'>")
+		$(html).attr('data-id', d.id)
+		$("#main").append(html)
+		})
+		socket.on("remove", function(d) { // Server requested to remove a image, maybe due to inactivity / disconnection
+		let dyamicText = `.imgCont[data-id=${d.id}]`
+		$(dyamicText).remove()
+	})
+	socket.on('imageChange', function(d) { // Change / add image to current document
+		// Generate searching query
+		let dyamicText = `.imgCont[data-id=${d.id}]`
+		// Checking if html img dont exists, then create a html for it and make added = true
+		let added = false
+		if(!$(dyamicText).length) {
+			dyamicText = $("<img class='imgCont'>")
+			$(dyamicText).attr('data-id', d.id)
+			added = true;
+		}
+		// Dynamic rotating and moving image
+		let transform = `translate(${d.x}px, ${d.y}px) rotate(${radsToDegs(d.rads)}deg)`
+		// Checking if img html src attribute don't exist
+		let src = $(dyamicText).attr('src')
+		if(!src) {
+			$(dyamicText).attr('src', d.img)
+		}
+		// Applying css to img html
+		$(dyamicText).css({
+			transform: transform
+		})
+		// In case added = true, means img html didn't existed, so appending to current html
+		if(added) {
+			$("#main").append(dyamicText)
+		}
+	})
+
+	// Function to convert radians to degree (we are getting radian from p5 customer page)
+	const radsToDegs = rad => rad * 180 / Math.PI;

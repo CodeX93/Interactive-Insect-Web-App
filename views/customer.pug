@@ -1,0 +1,577 @@
+doctype html
+head
+  meta(charset='utf-8')
+  title The Nature Takeover | Interactive
+  link(rel='stylesheet' href='/static/css/client.css')
+script(src='/static/js/socket.io.js' charset='utf-8')
+script(src='/static/js/p5.js' charset='utf-8')
+script(src='https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js')
+script(type='text/javascript').
+  // Set initial / global values
+  let socket
+  var x = 0
+  var y = 0
+  var velocityX = 0;
+  var velocityY = 0;
+  var angle1 = 0.0;
+  var targetAngle = 0.0;
+  var segLength = 50;
+  var targetX;
+  var targetY;
+  var smoothTargetX;
+  var smoothTargetY;
+  let imgLoaded = false
+  let img
+  let imgUrl
+  let canvas
+  var idleTime = 0;
+
+  // Organic body movement variables
+  var insectType = 'yellow_bee';
+  var animationFrame = 0;
+  var wingFlap = 0;
+  var bodyBob = 0;
+  var legCycle = 0;
+  var antennaeSway = 0;
+  var isMoving = false;
+  var lastX = 0, lastY = 0;
+  var movementSpeed = 0;
+
+  // Detailed animation parameters for each specific insect
+  var animations = {
+    // BEES
+    yellow_bee: {
+      wingFlapSpeed: 0.9,
+      wingFlapIntensity: 0.12,
+      bodyBobSpeed: 0.4,
+      bodyBobIntensity: 4,
+      scaleVariation: 0.08,
+      rotationVariation: 3,
+      buzzIntensity: 1.5,
+      antennaeSway: 0.15,
+      easing: 0.08,
+      friction: 0.85,
+      maxSpeed: 8,
+      acceleration: 0.3
+    },
+    purple_bee: {
+      wingFlapSpeed: 0.85,
+      wingFlapIntensity: 0.1,
+      bodyBobSpeed: 0.35,
+      bodyBobIntensity: 3.5,
+      scaleVariation: 0.06,
+      rotationVariation: 2.5,
+      buzzIntensity: 1.2,
+      antennaeSway: 0.12,
+      easing: 0.07,
+      friction: 0.88,
+      maxSpeed: 7,
+      acceleration: 0.25
+    },
+    blue_bee: {
+      wingFlapSpeed: 1.1,
+      wingFlapIntensity: 0.15,
+      bodyBobSpeed: 0.45,
+      bodyBobIntensity: 4.5,
+      scaleVariation: 0.1,
+      rotationVariation: 3.5,
+      buzzIntensity: 1.8,
+      antennaeSway: 0.18,
+      easing: 0.09,
+      friction: 0.82,
+      maxSpeed: 9,
+      acceleration: 0.35
+    },
+    
+    // BUTTERFLIES
+    red_butterfly: {
+      wingFlapSpeed: 0.12,
+      wingFlapIntensity: 0.4,
+      bodyBobSpeed: 0.06,
+      bodyBobIntensity: 12,
+      scaleVariation: 0.25,
+      rotationVariation: 8,
+      glideIntensity: 15,
+      antennaeSway: 0.08,
+      easing: 0.04,
+      friction: 0.92,
+      maxSpeed: 5,
+      acceleration: 0.15
+    },
+    purple_butterfly: {
+      wingFlapSpeed: 0.1,
+      wingFlapIntensity: 0.35,
+      bodyBobSpeed: 0.05,
+      bodyBobIntensity: 10,
+      scaleVariation: 0.22,
+      rotationVariation: 6,
+      glideIntensity: 12,
+      antennaeSway: 0.06,
+      easing: 0.035,
+      friction: 0.94,
+      maxSpeed: 4,
+      acceleration: 0.12
+    },
+    yellow_butterfly: {
+      wingFlapSpeed: 0.15,
+      wingFlapIntensity: 0.3,
+      bodyBobSpeed: 0.08,
+      bodyBobIntensity: 8,
+      scaleVariation: 0.18,
+      rotationVariation: 5,
+      glideIntensity: 10,
+      antennaeSway: 0.1,
+      easing: 0.05,
+      friction: 0.9,
+      maxSpeed: 6,
+      acceleration: 0.2
+    },
+    pink_butterfly: {
+      wingFlapSpeed: 0.11,
+      wingFlapIntensity: 0.38,
+      bodyBobSpeed: 0.055,
+      bodyBobIntensity: 11,
+      scaleVariation: 0.28,
+      rotationVariation: 7,
+      glideIntensity: 14,
+      antennaeSway: 0.07,
+      easing: 0.038,
+      friction: 0.93,
+      maxSpeed: 4.5,
+      acceleration: 0.13
+    },
+    
+    // BEETLES
+    golden_beetle: {
+      legSpeed: 0.6,
+      bodyBobSpeed: 0.3,
+      bodyBobIntensity: 3,
+      scaleVariation: 0.04,
+      rotationVariation: 2,
+      walkCycle: 0.4,
+      antennaeSway: 0.2,
+      shellShimmer: 0.15,
+      easing: 0.06,
+      friction: 0.75,
+      maxSpeed: 4,
+      acceleration: 0.18
+    }
+  };
+
+  // Code for idle user
+  $(document).ready(function () {
+    var idleInterval = setInterval(timerIncrement, 1000);
+    $(this).mousemove(function (e) {
+      idleTime = 0;
+    });
+    $(this).keypress(function (e) {
+      idleTime = 0;
+    });
+  });
+
+  function timerIncrement() {
+    idleTime = idleTime + 1;
+    if (idleTime == 60) {
+      socket.emit('inactive')
+    }
+  }
+
+  function determineInsectType(imagePath) {
+    var path = imagePath.toLowerCase();
+    
+    // Bees
+    if (path.includes('yellow') && (path.includes('bee') || path.includes('bumble'))) {
+      return 'yellow_bee';
+    }
+    if (path.includes('purple') && (path.includes('bee') || path.includes('bumble'))) {
+      return 'purple_bee';
+    }
+    if (path.includes('blue') && (path.includes('bee') || path.includes('bumble'))) {
+      return 'blue_bee';
+    }
+    
+    // Butterflies
+    if (path.includes('red') && path.includes('butterfly')) {
+      return 'red_butterfly';
+    }
+    if (path.includes('purple') && path.includes('butterfly')) {
+      return 'purple_butterfly';
+    }
+    if (path.includes('yellow') && path.includes('butterfly')) {
+      return 'yellow_butterfly';
+    }
+    if (path.includes('pink') && path.includes('butterfly')) {
+      return 'pink_butterfly';
+    }
+    
+    // Beetles
+    if (path.includes('beetle') || path.includes('golden') || path.includes('scarab')) {
+      return 'golden_beetle';
+    }
+    
+    // Fallback detection by generic terms
+    if (path.includes('bee') || path.includes('bumble')) {
+      return 'yellow_bee';
+    }
+    if (path.includes('butterfly')) {
+      return 'red_butterfly';
+    }
+    if (path.includes('beetle') || path.includes('ant') || path.includes('spider')) {
+      return 'golden_beetle';
+    }
+    
+    return 'yellow_bee'; // Default
+  }
+
+  function setup() {
+    canvas = createCanvas(windowWidth, windowHeight, [P2D]);
+    canvas.style("display", "block")
+    background(0);
+    targetX = windowWidth / 2;
+    targetY = windowHeight / 2;
+    smoothTargetX = targetX;
+    smoothTargetY = targetY;
+    x = targetX;
+    y = targetY;
+    lastX = targetX;
+    lastY = targetY;
+    
+    socket = io.connect();
+    socket.on('connect',function() {
+      socket.emit('client')
+    })
+    socket.on('image', function(d) {
+      img = loadImage(d.image, function() {
+        imgUrl = d.image;
+        insectType = determineInsectType(d.image);
+        console.log('Detected insect type:', insectType);
+        targetX = windowWidth / 2;
+        targetY = windowHeight / 2;
+        smoothTargetX = targetX;
+        smoothTargetY = targetY;
+        x = targetX;
+        y = targetY;
+        loop();
+      });
+    })
+    noLoop();
+  }
+
+  // Smooth easing functions
+  function easeOutCubic(t) {
+    return 1 - Math.pow(1 - t, 3);
+  }
+
+  function easeInOutQuad(t) {
+    return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+  }
+
+  function smoothLerp(current, target, factor) {
+    return current + (target - current) * factor;
+  }
+
+  function updateSmoothMovement() {
+    var anim = animations[insectType];
+    if (!anim) anim = animations.yellow_bee;
+
+    // Create a natural following distance - insect doesn't stick directly to cursor
+    var followDistance = 50; // Pixels behind cursor
+    var dx = targetX - x;
+    var dy = targetY - y;
+    var distanceToTarget = sqrt(dx * dx + dy * dy);
+    
+    // If we're too close to cursor, ease the target back slightly
+    if (distanceToTarget < followDistance) {
+      var angle = atan2(dy, dx);
+      var adjustedTargetX = targetX - cos(angle) * (followDistance - distanceToTarget);
+      var adjustedTargetY = targetY - sin(angle) * (followDistance - distanceToTarget);
+      smoothTargetX = smoothLerp(smoothTargetX, adjustedTargetX, 0.08);
+      smoothTargetY = smoothLerp(smoothTargetY, adjustedTargetY, 0.08);
+    } else {
+      // Normal smooth interpolation when further away
+      smoothTargetX = smoothLerp(smoothTargetX, targetX, 0.12);
+      smoothTargetY = smoothLerp(smoothTargetY, targetY, 0.12);
+    }
+
+    // Calculate desired velocity towards smooth target
+    dx = smoothTargetX - x;
+    dy = smoothTargetY - y;
+    var distance = sqrt(dx * dx + dy * dy);
+
+    if (distance > 1) {
+      // Normalize direction
+      dx /= distance;
+      dy /= distance;
+
+      // Apply acceleration towards target with distance-based scaling
+      var accelerationScale = min(distance / 100, 1); // Slower when close
+      velocityX += dx * anim.acceleration * accelerationScale;
+      velocityY += dy * anim.acceleration * accelerationScale;
+
+      // Limit maximum speed
+      var speed = sqrt(velocityX * velocityX + velocityY * velocityY);
+      if (speed > anim.maxSpeed) {
+        velocityX = (velocityX / speed) * anim.maxSpeed;
+        velocityY = (velocityY / speed) * anim.maxSpeed;
+      }
+    }
+
+    // Apply friction
+    velocityX *= anim.friction;
+    velocityY *= anim.friction;
+
+    // Update position
+    x += velocityX;
+    y += velocityY;
+
+    // Smooth angle interpolation based on movement direction
+    var desiredAngle = atan2(velocityY, velocityX);
+    var angleDiff = desiredAngle - angle1;
+    
+    // Handle angle wrapping
+    if (angleDiff > PI) angleDiff -= TWO_PI;
+    if (angleDiff < -PI) angleDiff += TWO_PI;
+    
+    // Smoother angle transition based on movement speed
+    var angleEasing = map(movementSpeed, 0, anim.maxSpeed, 0.05, 0.15);
+    angle1 += angleDiff * angleEasing;
+  }
+
+  function draw() {
+    if (img) {
+      updateSmoothMovement();
+      updateBodyAnimation();
+      insect(x, y);
+    }
+  }
+
+  function updateBodyAnimation() {
+    animationFrame++;
+    
+    // Calculate movement speed using velocity for smooth animation
+    movementSpeed = sqrt(velocityX * velocityX + velocityY * velocityY);
+    isMoving = movementSpeed > 0.5;
+
+    var anim = animations[insectType];
+    if (!anim) anim = animations.yellow_bee; // Fallback
+    
+    // Common antennae movement for all insects
+    antennaeSway = sin(animationFrame * 0.1) * anim.antennaeSway;
+    
+    if (insectType.includes('bee')) {
+      // BEE ANIMATIONS - Fast wing beats with buzzing
+      wingFlap = sin(animationFrame * anim.wingFlapSpeed) * anim.wingFlapIntensity;
+      bodyBob = sin(animationFrame * anim.bodyBobSpeed) * anim.bodyBobIntensity;
+      
+      // Add species-specific buzzing characteristics
+      var buzzVariation = sin(animationFrame * 0.7) * anim.buzzIntensity;
+      bodyBob += buzzVariation;
+      
+      // More intense animation when moving
+      if (isMoving) {
+        wingFlap *= (1 + movementSpeed * 0.08);
+        bodyBob *= (1 + movementSpeed * 0.05);
+      }
+      
+    } else if (insectType.includes('butterfly')) {
+      // BUTTERFLY ANIMATIONS - Graceful, flowing movements
+      wingFlap = sin(animationFrame * anim.wingFlapSpeed) * anim.wingFlapIntensity;
+      bodyBob = sin(animationFrame * anim.bodyBobSpeed) * anim.bodyBobIntensity;
+      
+      // Add gliding effect - larger butterflies glide more
+      var glideEffect = sin(animationFrame * 0.03) * anim.glideIntensity;
+      bodyBob += glideEffect;
+      
+      // Enhanced wing movement when moving
+      if (isMoving) {
+        wingFlap *= (1 + movementSpeed * 0.12);
+        bodyBob *= (1 + movementSpeed * 0.08);
+      } else {
+        // Gentle floating when stationary
+        wingFlap *= 0.6;
+        bodyBob *= 0.8;
+      }
+      
+    } else if (insectType.includes('beetle')) {
+      // BEETLE ANIMATIONS - Ground-based walking movements
+      legCycle = sin(animationFrame * anim.walkCycle) * anim.scaleVariation;
+      bodyBob = sin(animationFrame * anim.bodyBobSpeed) * anim.bodyBobIntensity;
+      
+      // Shell shimmer effect
+      var shellShimmer = sin(animationFrame * 0.2) * anim.shellShimmer;
+      
+      // Only animate significantly when moving
+      if (isMoving) {
+        legCycle *= movementSpeed * 0.3;
+        bodyBob *= movementSpeed * 0.2;
+      } else {
+        legCycle *= 0.1; // Minimal movement when stationary
+        bodyBob *= 0.15;
+      }
+    }
+  }
+
+  function mouseMoved() {
+    // Insect follows cursor movement smoothly
+    var data = {
+      x: mouseX,
+      y: mouseY
+    }
+    socket.emit('mouse', data);
+    
+    // Set target for smooth interpolation
+    targetX = data.x;
+    targetY = data.y;
+    
+    let angle = atan2(data.y - height / 2, data.x - width / 2);
+    console.log('following cursor: ' + data.x + ', ' + data.y);
+  }
+
+  function mouseDragged() {
+    // Also follow during drag for touch devices
+    mouseMoved();
+  }
+
+  function touchMoved() {
+    // Touch support for mobile devices
+    if (touches.length > 0) {
+      var data = {
+        x: touches[0].x,
+        y: touches[0].y
+      }
+      socket.emit('mouse', data);
+      
+      targetX = data.x;
+      targetY = data.y;
+      
+      console.log('following touch: ' + data.x + ', ' + data.y);
+    }
+    return false; // Prevent default
+  }
+
+  function insect(currentX, currentY) {
+    stroke(255,0,0);
+    fill(0,0,0);
+    imageMode(CENTER);
+    background(0);
+    
+    // Use the smoothly interpolated position and angle
+    segment(currentX, currentY, angle1);
+
+    function segment(varx, vary, vara) {
+      push();
+      
+      // Apply organic body movement based on specific insect type
+      var anim = animations[insectType];
+      if (!anim) anim = animations.yellow_bee; // Fallback
+      
+      var organicX = varx;
+      var organicY = vary;
+      var organicRotation = vara + radians(90);
+      var organicScaleX = 1;
+      var organicScaleY = 1;
+      
+      if (insectType.includes('bee')) {
+        // BEE-SPECIFIC MOVEMENTS
+        organicY += bodyBob;
+        organicX += sin(animationFrame * 0.8) * anim.buzzIntensity; // Side-to-side buzz
+        organicScaleX = 1 + wingFlap;
+        organicScaleY = 1 - wingFlap * 0.4;
+        organicRotation += sin(animationFrame * 0.2) * radians(anim.rotationVariation);
+        
+        // Add antennae sway
+        organicRotation += antennaeSway * radians(2);
+        
+      } else if (insectType.includes('butterfly')) {
+        // BUTTERFLY-SPECIFIC MOVEMENTS
+        organicY += bodyBob;
+        
+        // Graceful wing scaling with species variations
+        organicScaleX = 1 + wingFlap + sin(animationFrame * 0.08) * anim.scaleVariation;
+        organicScaleY = 1 - wingFlap * 0.6 + cos(animationFrame * 0.09) * anim.scaleVariation;
+        
+        // Gentle rotation with wind-like movement
+        organicRotation += sin(animationFrame * 0.06) * radians(anim.rotationVariation);
+        
+        // Add subtle drift movement
+        organicX += sin(animationFrame * 0.04) * 3;
+        
+        // Antennae movement
+        organicRotation += antennaeSway * radians(1.5);
+        
+      } else if (insectType.includes('beetle')) {
+        // BEETLE-SPECIFIC MOVEMENTS
+        organicY += bodyBob;
+        organicScaleX = 1 + legCycle;
+        organicScaleY = 1 - legCycle * 0.3;
+        
+        // Walking gait simulation
+        if (isMoving) {
+          organicX += sin(animationFrame * anim.walkCycle) * 2;
+          organicRotation += sin(animationFrame * anim.walkCycle) * radians(anim.rotationVariation);
+        }
+        
+        // Shell shimmer effect (subtle scale variation)
+        organicScaleX += sin(animationFrame * 0.2) * 0.02;
+        
+        // Antennae movement
+        organicRotation += antennaeSway * radians(3);
+      }
+      
+      translate(organicX, organicY);
+      rotate(organicRotation);
+      scale(organicScaleX, organicScaleY);
+
+      // Calculate screen coordinates for server
+      var screenVarX = organicX - 45;
+      var screenVarY = organicY - 45;
+      let screenX = (screenVarX / windowWidth) * 3160; 
+      let screenY = (screenVarY / windowHeight) * 1200;
+
+      console.log(`New Co-ordinates sending : X = ${screenX}, Y = ${screenY}`);
+      socket.emit('imageChange', { 
+        x: screenX, 
+        y: screenY, 
+        rads: vara + radians(90), 
+        img: imgUrl,
+        insectType: insectType,
+        animationFrame: animationFrame,
+        wingFlap: wingFlap,
+        bodyBob: bodyBob
+      });
+
+      // Draw the animated insect with size based on type
+      var size = 90;
+      if (insectType.includes('butterfly')) {
+        size = 100; // Butterflies slightly larger
+      } else if (insectType.includes('beetle')) {
+        size = 85; // Beetles slightly smaller
+      }
+      
+      image(img, 0, 0, size, size);
+
+      pop();
+    }
+  }
+
+body
+  #splash-overlay(style='position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.95); z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: opacity 1s ease; opacity: 1;')
+    img#splash-logo(src='/static/images/logo-white.svg', alt='Logo', style='width: 180px; max-width: 60vw; margin-bottom: 32px;')
+    #splash-instructions(style="color: #fff; text-align: center; font-family: 'Arial Rounded MT Bold', Arial, sans-serif; background: rgba(0,0,0,0.2); padding: 24px 32px; border-radius: 16px; box-shadow: 0 4px 24px rgba(0,0,0,0.12);")
+      h2(style='margin: 0 0 12px 0; font-size: 2rem;') Welcome!
+      p(style='margin: 0; font-size: 1.2rem;')
+        | Move your mouse or finger around the screen.
+        br
+        | Your insect will smoothly follow your movements!
+  script.
+    // Splash screen fade out after 5 seconds
+    window.addEventListener('DOMContentLoaded', function() {
+      setTimeout(function() {
+        const splash = document.getElementById('splash-overlay');
+        if (splash) {
+          splash.style.opacity = '0';
+          splash.style.pointerEvents = 'none';
+          setTimeout(() => splash.style.display = 'none', 1000);
+        }
+      }, 5000);
+    });
