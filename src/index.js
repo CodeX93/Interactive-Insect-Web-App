@@ -3,6 +3,7 @@ const express = require('express')
 const socketio = require('socket.io')
 const fs = require('fs')
 const path = require('path')
+const os = require('os')
 
 // Get env
 const vars = require('./configs/vars')
@@ -54,6 +55,12 @@ app.get('/admin', async (req, res, next) => {
   return res.render('admin.pug')
 })
 
+// render admin.html page as static HTML
+app.get('/admin-html', async (req, res, next) => {
+  const filePath = path.resolve(__dirname, "../views/admin.html")
+  res.sendFile(filePath);
+})
+
 // Send image file
 app.get('/image/:imageName', async (req, res, next) => {
   const filePath = path.resolve(__dirname, "../images/"+req.params.imageName)
@@ -65,6 +72,21 @@ app.get('/image/:imageName', async (req, res, next) => {
   }
 })
 
-server.listen(port, () => {
+server.listen(port, '0.0.0.0', () => {
   console.log(`Server is up on port ${port}!`)
+  
+  // Get all network interfaces
+  const interfaces = os.networkInterfaces()
+  console.log('\nAvailable network addresses:')
+  
+  Object.keys(interfaces).forEach((iface) => {
+    interfaces[iface].forEach((details) => {
+      // Only show IPv4 addresses that aren't internal
+      if (details.family === 'IPv4' && !details.internal) {
+        console.log(`  http://${details.address}:${port}`)
+      }
+    })
+  })
+  
+  console.log('\nAccess from other devices using any of the above addresses')
 })
